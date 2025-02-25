@@ -13,6 +13,8 @@ import (
 	jira "github.com/andygrunwald/go-jira"
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/huh/spinner"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/lipgloss/table"
 )
 
 type LogData struct {
@@ -79,7 +81,7 @@ func StartUi(client *jira.Client, config *backend.Config) {
 		}
 
 		confirmationForm = huh.NewForm(
-			huh.NewGroup(huh.NewConfirm().Title("Logging summary:").Description(getSummary(logData)).Value(&confirm)),
+			huh.NewGroup(huh.NewConfirm().Description(getSummary(logData)).Value(&confirm)),
 		)
 		err = confirmationForm.Run()
 		if err != nil {
@@ -119,41 +121,66 @@ func prepareLogData(issues []backend.Issue) []LogData {
 }
 
 func getSummary(logData []LogData) string {
-	var summary string
+	var (
+		purple    = lipgloss.Color("99")
+		gray      = lipgloss.Color("245")
+		lightGray = lipgloss.Color("241")
+
+		headerStyle  = lipgloss.NewStyle().Foreground(purple).Bold(true).Align(lipgloss.Center)
+		cellStyle    = lipgloss.NewStyle().Padding(0, 1).Align(lipgloss.Center)
+		oddRowStyle  = cellStyle.Foreground(gray)
+		evenRowStyle = cellStyle.Foreground(lightGray)
+	)
+	t := table.New().
+		Border(lipgloss.NormalBorder()).
+		BorderStyle(lipgloss.NewStyle().Foreground(purple)).
+		StyleFunc(func(row, col int) lipgloss.Style {
+			switch {
+			case row == table.HeaderRow:
+				return headerStyle
+			case row%2 == 0:
+				return evenRowStyle
+			default:
+				return oddRowStyle
+			}
+		}).
+		Headers("ISSUE", "STANDARD", "SCRUM", "STATUS")
 	var loggedInSession float64
 	for _, logEntry := range logData {
 		if !logEntry.IsSelected {
 			continue
 		}
-		var issueData string
+		standardTime, scrumTime, transition := "N/A", "N/A", "N/A"
 		if "" != logEntry.StandardTime {
-			logged := getParsedTime(logEntry.StandardTime, logEntry.Key, "Standard")
-			issueData += fmt.Sprintf("StandardTime: %.2fh ", logged)
-			loggedInSession += logged
+			if logged := getParsedTime(logEntry.StandardTime, logEntry.Key, "Standard"); 0 != logged {
+				standardTime = fmt.Sprintf("%.2fh", logged)
+				loggedInSession += logged
+			}
 		}
 		if "" != logEntry.ScrumTime {
-			logged := getParsedTime(logEntry.ScrumTime, logEntry.Key, "Scrum")
-			issueData += fmt.Sprintf("ScrumTime: %.2fh ", logged)
-			loggedInSession += logged
+			if logged := getParsedTime(logEntry.ScrumTime, logEntry.Key, "Scrum"); 0 != logged {
+				scrumTime = fmt.Sprintf("%.2fh", logged)
+				loggedInSession += logged
+			}
 		}
 		if !strings.HasSuffix(logEntry.Status, " (current)") {
-			issueData += fmt.Sprintf("Status: %s -> %s ", logEntry.OriginalStatus, logEntry.Status)
+			transition = fmt.Sprintf("%s -> %s ", logEntry.OriginalStatus, logEntry.Status)
 		}
-		if "" != issueData {
-			summary += fmt.Sprintf("%s\n%s\n", logEntry.Key, issueData)
-		}
+		t.Row(logEntry.Key, standardTime, scrumTime, transition)
 	}
 
-	if "" != summary {
-		summary = fmt.Sprintf("Total logged time: %.2fh\n", loggedInSession) + summary
-	}
-	return summary
+	return fmt.Sprintf(
+		"%s%s\n%s",
+		lipgloss.NewStyle().Foreground(purple).SetString("Total logged time: "),
+		lipgloss.NewStyle().Foreground(purple).Bold(true).SetString(fmt.Sprintf("%.2fh", loggedInSession)),
+		t,
+	)
 }
 
 func getJiraIssues(client *jira.Client, config *backend.Config) []backend.Issue {
 	issues, err := backend.GetAllJiraIssuesForAssignee(config, client)
 	if err != nil {
-		fmt.Println("error")
+		fmt.Printf("Error: %s\n", err)
 		os.Exit(1)
 	}
 	return issues
