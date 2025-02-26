@@ -29,7 +29,7 @@ type LogData struct {
 
 var ISSUE_STATUSES = [5]string{"Open", "In Progress", "In Review", "Done", "Obsolete"}
 
-func StartUi(client *jira.Client, config *backend.Config) {
+func StartUi(client *jira.Client, config *backend.Config, dayDelta int) {
 	var issues []backend.Issue
 	var chosenIndexes []int
 	var err error
@@ -96,7 +96,7 @@ func StartUi(client *jira.Client, config *backend.Config) {
 		Title("Logging...").
 		Context(loggingContext).
 		Action(func() {
-			logOnJira(client, logData)
+			logOnJira(client, logData, dayDelta)
 		}).
 		Context(loggingContext).
 		Run()
@@ -278,7 +278,7 @@ func printErrorLog(message string) {
 	fmt.Println(fmt.Sprintf("%d:%d:%d\033[31m - %s\033[0m", hours, minutes, seconds, message))
 }
 
-func logOnJira(client *jira.Client, logData []LogData) {
+func logOnJira(client *jira.Client, logData []LogData, dayDelta int) {
 	var wg sync.WaitGroup
 	var err error
 	for _, logEntry := range logData {
@@ -289,7 +289,7 @@ func logOnJira(client *jira.Client, logData []LogData) {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				err = backend.LogHoursForIssue(client, logEntry.Key, logEntry.StandardTime)
+				err = backend.LogHoursForIssue(client, logEntry.Key, logEntry.StandardTime, dayDelta)
 				if err != nil {
 					printErrorLog(fmt.Sprintf("Couldn't log %s under %s: %v", logEntry.StandardTime, logEntry.Key, err))
 				} else {
@@ -301,7 +301,7 @@ func logOnJira(client *jira.Client, logData []LogData) {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				err = backend.LogHoursForIssuesScrumMeetings(client, logEntry.Key, logEntry.ScrumTime)
+				err = backend.LogHoursForIssuesScrumMeetings(client, logEntry.Key, logEntry.ScrumTime, dayDelta)
 				if err != nil {
 					printErrorLog(
 						fmt.Sprintf(

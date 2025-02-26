@@ -59,21 +59,26 @@ func GetAllJiraIssuesForAssignee(config *Config, client *jira.Client) ([]Issue, 
 					LoggedTime:       getJiraDurationAsString(issue.Fields.TimeSpent),
 				},
 			)
+		} else {
+			if strings.Contains(config.AdditionalIssues, issue.Key) {
+				RemoveIssueFromConfig(issue.Key, config)
+			}
 		}
 	}
 
 	return mappedIssues, nil
 }
 
-func LogHoursForIssue(client *jira.Client, id, time string) error {
-	_, _, err := client.Issue.AddWorklogRecord(id, &jira.WorklogRecord{TimeSpent: time})
+func LogHoursForIssue(client *jira.Client, id, timeToLog string, dayDelta int) error {
+	logDate := jira.Time(time.Now().Add(time.Duration(24*dayDelta) * time.Hour))
+	_, _, err := client.Issue.AddWorklogRecord(id, &jira.WorklogRecord{TimeSpent: timeToLog, Started: &logDate})
 	if err != nil {
 		return errors.New(fmt.Sprintf("Couldn't add worklog to %s issue", id))
 	}
 	return nil
 }
 
-func LogHoursForIssuesScrumMeetings(client *jira.Client, issueId, timeToLog string) error {
+func LogHoursForIssuesScrumMeetings(client *jira.Client, issueId, timeToLog string, dayDelta int) error {
 	issueCustomFields, _, err := client.Issue.GetCustomFields(issueId)
 	if err != nil {
 		return errors.New(fmt.Sprintf("Couldn't get %s issue's custom fields", issueId))
@@ -90,7 +95,7 @@ func LogHoursForIssuesScrumMeetings(client *jira.Client, issueId, timeToLog stri
 		}
 	}
 	if scrumIssue != "" {
-		return LogHoursForIssue(client, scrumIssue, timeToLog)
+		return LogHoursForIssue(client, scrumIssue, timeToLog, dayDelta)
 	} else {
 		return errors.New(fmt.Sprintf("Couldn't find scrum issue for %s issue under %v epic", issueId, issuesEpic))
 	}
